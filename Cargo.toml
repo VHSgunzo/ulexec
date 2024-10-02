@@ -1,0 +1,32 @@
+[package]
+name = "ulexec"
+version = "0.0.1"
+edition = "2021"
+license = "MIT"
+readme = "README.md"
+description = "A tool for loading and executing PE on Windows and ELF on Linux from memory"
+
+[profile.release]
+lto = true
+panic = "abort"
+opt-level = "z"
+strip = "symbols"
+debug  = false
+codegen-units = 1
+
+[profile.dev]
+panic = "abort"
+opt-level = 0
+
+[dependencies]
+clap = { version = "*", features = [ "derive" ] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+memexec = "*"
+# reqwest = { version = "*", features = ["blocking"] }
+reqwest = { version = "*", features = ["blocking", "rustls-tls"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+userland-execve = "*"
+nix = { version = "*", features = [ "fs", "process" ] }
+reqwest = { version = "*", features = ["blocking", "native-tls-vendored"] }

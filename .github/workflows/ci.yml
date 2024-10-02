@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches:
+    - action
+    tags:
+    - '*'
+
+jobs:
+  build_and_release:
+    name: ulexec
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          target: x86_64-unknown-linux-musl
+
+      - name: Build
+        run: >
+          sudo bash -c 'apt update && apt install upx binutils gcc-mingw-w64 musl-tools -y';
+          rustup component add rust-src --toolchain nightly;
+          cargo build --release;
+          strip -s -R .comment -R .gnu.version --strip-unneeded target/x86_64-unknown-linux-musl/release/ulexec;
+          upx -9 --best target/x86_64-unknown-linux-musl/release/ulexec -o target/x86_64-unknown-linux-musl/release/ulexec-upx;
+          cp target/x86_64-unknown-linux-musl/release/{ulexec,ulexec-upx} . ;
+          echo Windows;
+          rustup target add x86_64-pc-windows-gnu;
+          cargo build --release --target x86_64-pc-windows-gnu;
+          upx -9 --best target/x86_64-pc-windows-gnu/release/ulexec.exe -o target/x86_64-pc-windows-gnu/release/ulexec-upx.exe;
+          cp target/x86_64-pc-windows-gnu/release/{ulexec,ulexec-upx}.exe . ;
+
+      - name: Build archlinux package
+        uses: countstarlight/arch-makepkg-action@master
+        with:
+          scripts: "makepkg -fsCc --noconfirm"
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ulexec*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
