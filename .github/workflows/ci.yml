@@ -31,12 +31,12 @@ jobs:
           rustup component add rust-src --toolchain nightly;
           cargo build --release;
           strip -s -R .comment -R .gnu.version --strip-unneeded target/x86_64-unknown-linux-musl/release/ulexec;
-          upx -9 --best target/x86_64-unknown-linux-musl/release/ulexec -o target/x86_64-unknown-linux-musl/release/ulexec-upx;
+          upx --force -9 --best target/x86_64-unknown-linux-musl/release/ulexec -o target/x86_64-unknown-linux-musl/release/ulexec-upx;
           cp target/x86_64-unknown-linux-musl/release/{ulexec,ulexec-upx} . ;
           echo Windows;
           rustup target add x86_64-pc-windows-gnu;
           cargo build --release --target x86_64-pc-windows-gnu;
-          upx -9 --best target/x86_64-pc-windows-gnu/release/ulexec.exe -o target/x86_64-pc-windows-gnu/release/ulexec-upx.exe;
+          upx --force -9 --best target/x86_64-pc-windows-gnu/release/ulexec.exe -o target/x86_64-pc-windows-gnu/release/ulexec-upx.exe;
           cp target/x86_64-pc-windows-gnu/release/{ulexec,ulexec-upx}.exe . ;
 
       - name: Build archlinux package

@@ -25,7 +25,7 @@ cargo build --release --target x86_64-pc-windows-gnu
 ```
 * Or take an already precompiled binary file from the [releases](https://github.com/VHSgunzo/ulexec/releases)
 
-* **Usage**
+## Usage
 ```
 ulexec [OPTIONS] [EXEC_ARGS]...
 
@@ -40,7 +40,7 @@ Options:
   -V, --version    Print version
 ```
 
-* **Examples**
+## Examples
 The tool fully supports static and dynamically compiled Linux executables and Windows PE (portable executable). Simply pass the filename of the binary to `ulexec` and any arguments you want to supply to the binary. The environment will be directly copied over from the environment in which you execute `ulexec`
 
 ```
@@ -71,7 +71,7 @@ If the resource (for example https://temp.sh) on which the binary file is locate
 ulexec -p -u http://temp.sh/bqcnS/ls -- -lha
 ```
 
-* **References**
+## References
 1. [userland-execve](https://crates.io/crates/userland-execve)
 2. [memexec](https://lib.rs/crates/memexec)
 3. [ulexec](https://github.com/anvilsecure/ulexec)
