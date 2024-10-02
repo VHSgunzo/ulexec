@@ -1,6 +1,7 @@
 // #![windows_subsystem = "windows"]
 
 use std::env;
+use std::fs::read;
 use std::path::PathBuf;
 use std::process::exit;
 use std::io::{self, IsTerminal, Read};
@@ -94,16 +95,16 @@ fn main() {
         }
     }
 
+    if !file_path.to_str().unwrap().is_empty() && exec_file.is_empty() {
+        exec_file = read(&file_path).unwrap()
+    }
+
     #[cfg(target_os = "windows")]
     {
         use std::io::Write;
         use std::process::{Stdio, Command};
 
-        if !_is_child && (!file_path.to_str().unwrap().is_empty() || args.url.is_some() || args.stdin) {
-            if !file_path.to_str().unwrap().is_empty() && exec_file.is_empty() {
-                exec_file = std::fs::read(file_path).unwrap()
-            }
-
+        if !_is_child && (!exec_file.is_empty() || args.stdin) {
             env::set_var("ULEXEC_CHILD", "1");
             let mut child = Command::new(env::current_exe().unwrap())
                 .args(args.exec_args)
@@ -125,7 +126,6 @@ fn main() {
 
     #[cfg(target_os = "linux")]
     {
-        use std::fs::File;
         use std::ffi::CString;
         use std::thread::spawn;
         use std::os::fd::AsRawFd;
@@ -141,11 +141,6 @@ fn main() {
                 .find(|h| h.p_type == program_header::PT_LOAD)
                 .unwrap()
             .p_vaddr == 0
-        }
-
-        if exec_file.is_empty() {
-            let mut file = File::open(file_path.clone()).unwrap();
-            file.read_to_end(&mut exec_file).unwrap();
         }
 
         if !is_pie(&exec_file) {
@@ -171,7 +166,7 @@ fn main() {
             ).unwrap();
             let memfd_raw = memfd.as_raw_fd();
 
-            if file_path.to_str().unwrap().is_empty() {
+            if file_path.to_str().unwrap().is_empty() && !exec_file.is_empty() {
                 write(memfd, &exec_file).unwrap();
                 file_path = PathBuf::from(
                     format!("/proc/self/fd/{}", memfd_raw.to_string())
