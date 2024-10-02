@@ -71,7 +71,7 @@ fn main() {
 
             let client = client
                 .danger_accept_invalid_certs(true)
-                .timeout(std::time::Duration::from_secs(5))
+                .timeout(None)
                 .build()
                 .unwrap();
 
