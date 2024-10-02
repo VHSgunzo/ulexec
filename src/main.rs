@@ -125,57 +125,83 @@ fn main() {
 
     #[cfg(target_os = "linux")]
     {
+        use std::fs::File;
         use std::ffi::CString;
         use std::thread::spawn;
         use std::os::fd::AsRawFd;
         use nix::sys::wait::waitpid;
+        use goblin::elf::{Elf, program_header};
+        use memfd_exec::{Stdio, MemFdExecutable};
         use nix::unistd::{write, close, fork, ForkResult};
         use nix::sys::memfd::{memfd_create, MemFdCreateFlag};
 
-        let envs: Vec<CString> = env::vars()
-            .map(|(key, value)| CString::new(
-                format!("{}={}", key, value)
-        ).unwrap()).collect();
-
-        let mut args_cstrs: Vec<CString> = args.exec_args.iter()
-            .map(|arg| CString::new(arg.clone()).unwrap()).collect();
-
-        let memfd = &memfd_create(
-            CString::new("exec").unwrap().as_c_str(),
-            MemFdCreateFlag::MFD_CLOEXEC,
-        ).unwrap();
-        let memfd_raw = memfd.as_raw_fd();
-
-        if file_path.to_str().unwrap().is_empty() {
-            write(memfd, &exec_file).unwrap();
-            drop(exec_file);
-            file_path = PathBuf::from(
-                format!("/proc/self/fd/{}", memfd_raw.to_string())
-            )
+        fn is_pie(bytes: &Vec<u8>) -> bool {
+            let elf = Elf::parse(&bytes).unwrap();
+            elf.program_headers.iter()
+                .find(|h| h.p_type == program_header::PT_LOAD)
+                .unwrap()
+            .p_vaddr == 0
         }
 
-        let file_cstr = CString::new(
-            file_path.to_str().unwrap()
-        ).unwrap();
-        args_cstrs.insert(0, file_cstr);
+        if exec_file.is_empty() {
+            let mut file = File::open(file_path.clone()).unwrap();
+            file.read_to_end(&mut exec_file).unwrap();
+        }
 
-        match unsafe { fork() } {
-            Ok(ForkResult::Parent { child: pid }) => {
-                spawn(move || {
-                    waitpid(pid, None)
-                });
-                userland_execve::exec(
-                    &file_path,
-                    &args_cstrs,
-                    &envs,
+        if !is_pie(&exec_file) {
+            exit(MemFdExecutable::new("exec", &exec_file)
+                .args(args.exec_args)
+                .stdin(Stdio::inherit())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .envs(env::vars())
+                .status().unwrap().code().unwrap())
+        } else {
+            let envs: Vec<CString> = env::vars()
+                .map(|(key, value)| CString::new(
+                    format!("{}={}", key, value)
+            ).unwrap()).collect();
+
+            let mut args_cstrs: Vec<CString> = args.exec_args.iter()
+                .map(|arg| CString::new(arg.clone()).unwrap()).collect();
+
+            let memfd = &memfd_create(
+                CString::new("exec").unwrap().as_c_str(),
+                MemFdCreateFlag::MFD_CLOEXEC,
+            ).unwrap();
+            let memfd_raw = memfd.as_raw_fd();
+
+            if file_path.to_str().unwrap().is_empty() {
+                write(memfd, &exec_file).unwrap();
+                file_path = PathBuf::from(
+                    format!("/proc/self/fd/{}", memfd_raw.to_string())
                 )
             }
-            Ok(ForkResult::Child) => {
-                close(memfd_raw).unwrap()
-            }
-            Err(_) => {
-                eprintln!("Fork error!");
-                exit(1)
+            drop(exec_file);
+
+            let file_cstr = CString::new(
+                file_path.to_str().unwrap()
+            ).unwrap();
+            args_cstrs.insert(0, file_cstr);
+
+            match unsafe { fork() } {
+                Ok(ForkResult::Parent { child: pid }) => {
+                    spawn(move || {
+                        waitpid(pid, None)
+                    });
+                    userland_execve::exec(
+                        &file_path,
+                        &args_cstrs,
+                        &envs,
+                    )
+                }
+                Ok(ForkResult::Child) => {
+                    close(memfd_raw).unwrap()
+                }
+                Err(_) => {
+                    eprintln!("Fork error!");
+                    exit(1)
+                }
             }
         }
     }

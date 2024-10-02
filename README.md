@@ -73,5 +73,6 @@ ulexec -p -u http://temp.sh/bqcnS/ls -- -lha
 
 ## References
 1. [userland-execve](https://crates.io/crates/userland-execve)
+2. [memfd-exec](https://github.com/novafacing/memfd-exec)
 2. [memexec](https://lib.rs/crates/memexec)
 3. [ulexecve](https://github.com/anvilsecure/ulexecve)
