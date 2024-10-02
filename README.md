@@ -53,10 +53,6 @@ You can have it read a binary from `stdin` if you specify `-s | --stdin` argumen
 cat /bin/ls|ulexec -s -- -lha
 # or
 ulexec -s</bin/ls -- -lha
-# or
-ulexec</bin/ls -- -lha
-# or
-cat /bin/ls|ulexec -- -lha
 ```
 
 To download a binary into memory and immediately execute it you can use `-u | --url`

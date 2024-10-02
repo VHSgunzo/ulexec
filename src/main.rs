@@ -4,7 +4,7 @@ use std::env;
 use std::fs::read;
 use std::path::PathBuf;
 use std::process::exit;
-use std::io::{self, IsTerminal, Read};
+use std::io::{self, Read};
 
 use clap::Parser;
 use reqwest::blocking::{Client, RequestBuilder};
@@ -59,40 +59,34 @@ fn main() {
     let mut exec_file: Vec<u8> = Vec::new();
     let mut file_path = PathBuf::new();
 
-    if !io::stdin().is_terminal()
-    && (io::stderr().is_terminal() || io::stdout().is_terminal() || args.stdin) {
-        args.stdin = true;
+    if args.stdin {
         io::stdin().lock().read_to_end(&mut exec_file).unwrap();
-    } else {
-        if args.url.is_some() {
-            let client = Client::builder();
+    } else if args.url.is_some() {
+        let client = Client::builder();
 
-            #[cfg(target_os = "windows")]
-            let client = client.use_rustls_tls();
+        #[cfg(target_os = "windows")]
+        let client = client.use_rustls_tls();
 
-            let client = client
-                .danger_accept_invalid_certs(true)
-                .timeout(None)
-                .build()
-                .unwrap();
+        let client = client
+            .danger_accept_invalid_certs(true)
+            .timeout(None)
+            .build()
+            .unwrap();
 
-            let req: RequestBuilder;
-            let url = args.url.as_ref().unwrap();
-            if args.post {
-                req = client.post(url)
-            } else {
-                req = client.get(url)
-            }
-            exec_file = req.send().unwrap().bytes().unwrap().to_vec();
-            drop(client)
+        let req: RequestBuilder;
+        let url = args.url.as_ref().unwrap();
+        if args.post {
+            req = client.post(url)
         } else {
-            if args.exec_args.is_empty() {
-                eprintln!("Specify the path to the binary file!");
-                exit(1)
-            } else {
-                file_path = PathBuf::from(args.exec_args.remove(0))
-            }
+            req = client.get(url)
         }
+        exec_file = req.send().unwrap().bytes().unwrap().to_vec();
+        drop(client)
+    } else if !args.exec_args.is_empty() {
+        file_path = PathBuf::from(args.exec_args.remove(0));
+    } else {
+        eprintln!("Specify the path to the binary file!");
+        exit(1)
     }
 
     if !file_path.to_str().unwrap().is_empty() && exec_file.is_empty() {
