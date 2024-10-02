@@ -19,14 +19,14 @@ panic = "abort"
 opt-level = 0
 
 [dependencies]
-clap = { version = "*", features = [ "derive" ] }
+clap = { version = "4.5.19", features = [ "derive" ] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-memexec = "*"
-# reqwest = { version = "*", features = ["blocking"] }
-reqwest = { version = "*", features = ["blocking", "rustls-tls"] }
+memexec = "0.2.0"
+# reqwest = { version = "0.12.8", features = ["blocking"] }
+reqwest = { version = "0.12.8", features = ["blocking", "rustls-tls"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-userland-execve = "*"
-nix = { version = "*", features = [ "fs", "process" ] }
-reqwest = { version = "*", features = ["blocking", "native-tls-vendored"] }
+userland-execve = "0.2.0"
+nix = { version = "0.29.0", features = [ "fs", "process" ] }
+reqwest = { version = "0.12.8", features = ["blocking", "native-tls-vendored"] }
