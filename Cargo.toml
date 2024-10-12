@@ -1,6 +1,6 @@
 [package]
 name = "ulexec"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
@@ -17,9 +17,6 @@ codegen-units = 1
 [profile.dev]
 panic = "abort"
 opt-level = 0
-
-[dependencies]
-clap = { version = "4.5.19", features = [ "derive" ] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 memexec = "0.2.0"

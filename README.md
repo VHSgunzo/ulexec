@@ -15,56 +15,57 @@ rustup component add rust-src --toolchain nightly
 ```
 rustup target add x86_64-unknown-linux-musl
 cargo build --release
-./target/x86_64-unknown-linux-musl/release/ulexec --help
+./target/x86_64-unknown-linux-musl/release/ulexec ~~help
 ```
 * **Compile the Windows binary (mingw-w64-gcc required)**
 ```
 rustup target add x86_64-pc-windows-gnu
 cargo build --release --target x86_64-pc-windows-gnu
-./target/x86_64-pc-windows-gnu/release/ulexec.exe --help
+./target/x86_64-pc-windows-gnu/release/ulexec.exe ~~help
 ```
 * Or take an already precompiled binary file from the [releases](https://github.com/VHSgunzo/ulexec/releases)
 
 ## Usage
 ```
-ulexec [OPTIONS] [EXEC_ARGS]...
+ulexec [OPTIONS] [EXEC ARGS]...
 
 Arguments:
-  [EXEC_ARGS]...  Command line arguments for execution
+  [EXEC ARGS]...  Command line arguments for execution
 
 Options:
-  -u, --url <URL>  Load the binary file from URL
-  -p, --post       Use the POST method instead of GET
-  -s, --stdin      Load the binary file from stdin
-  -h, --help       Print help
-  -V, --version    Print version
+  ~~u, ~~url <URL>    Load the binary file from URL
+  ~~p, ~~post         Use the POST method instead of GET
+  ~~s, ~~stdin        Load the binary file from stdin
+  ~~r, ~~remove       Self remove
+  ~~v, ~~version      Print version
+  ~~h, ~~help         Print help
 ```
 
 ## Examples
 The tool fully supports static and dynamically compiled Linux executables and Windows PE (portable executable). Simply pass the filename of the binary to `ulexec` and any arguments you want to supply to the binary. The environment will be directly copied over from the environment in which you execute `ulexec`
 
 ```
-ulexec /bin/ls -- -lha
+ulexec /bin/ls -lha
 ```
 
-You can have it read a binary from `stdin` if you specify `-s | --stdin` argument
+You can have it read a binary from `stdin` if you specify `~~s | ~~stdin` argument
 
 ```
-cat /bin/ls|ulexec -s -- -lha
+cat /bin/ls|ulexec ~~s -lha
 # or
-ulexec -s</bin/ls -- -lha
+ulexec ~~s</bin/ls -lha
 ```
 
-To download a binary into memory and immediately execute it you can use `-u | --url`
+To download a binary into memory and immediately execute it you can use `~~u | ~~url`
 
 ```
-ulexec -u http://examples.com/bin/ls -- -lha
+ulexec ~~u http://example.com/bin/ls -lha
 ```
 
-If the resource (for example https://temp.sh) on which the binary file is located requires using the POST method instead of GET to start downloading, you can specify this with the `-p | --post` argument
+If the resource (for example https://temp.sh) on which the binary file is located requires using the POST method instead of GET to start downloading, you can specify this with the `~~p | ~~post` argument
 
 ```
-ulexec -p -u http://temp.sh/bqcnS/ls -- -lha
+ulexec ~~p ~~u http://temp.sh/ABCDEF/ls -lha
 ```
 
 ## References

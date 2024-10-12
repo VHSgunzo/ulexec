@@ -1,32 +1,99 @@
 // #![windows_subsystem = "windows"]
 
 use std::env;
-use std::fs::read;
 use std::path::PathBuf;
 use std::process::exit;
 use std::io::{self, Read};
+use std::fs::{read, remove_file};
 
-use clap::Parser;
 use reqwest::blocking::{Client, RequestBuilder};
 
 
-#[derive(clap::Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[derive(Debug)]
 struct Args {
-    /// Load the binary file from URL
-    #[arg(short, long)]
     url: Option<String>,
-    /// Use the POST method instead of GET
-    #[arg(short, long)]
     post: bool,
-    /// Load the binary file from stdin
-    #[arg(short, long)]
     stdin: bool,
-    /// Command line arguments for execution
-    #[arg(value_parser)]
+    remove: bool,
     exec_args: Vec<String>,
 }
 
+impl Default for Args {
+    fn default() -> Self {
+        Args {
+            url: None,
+            post: false,
+            stdin: false,
+            remove: false,
+            exec_args: Vec::new(),
+        }
+    }
+}
+
+fn parse_args() -> Args {
+    let env_args: Vec<String> = env::args().skip(1).collect();
+    let mut args = Args::default();
+
+    let mut i = 0;
+    while i < env_args.len() {
+        match env_args[i].as_str() {
+            "~~url" | "~~u" => {
+                if i + 1 < env_args.len() {
+                    args.url = Some(env_args[i + 1].to_string());
+                    i += 2;
+                } else {
+                    eprintln!("error: a value is required for '~~url <URL>' but none was supplied");
+                    exit(1);
+                }
+            }
+            "~~post" | "~~p" => {
+                args.post = true;
+                i += 1;
+            }
+            "~~stdin" | "~~s" => {
+                args.stdin = true;
+                i += 1;
+            }
+            "~~remove" | "~~r" => {
+                args.remove = true;
+                i += 1;
+            }
+            "~~version" | "~~v" => {
+                println!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+                exit(0);
+            }
+            "~~help" | "~~h" => {
+                print_usage();
+                exit(0);
+            }
+            arg => {
+                args.exec_args.push(arg.to_string());
+                i += 1;
+            }
+        }
+    }
+    args
+}
+
+fn print_usage() {
+    println!("{}\n", env!("CARGO_PKG_DESCRIPTION"));
+    println!("Usage: {} [OPTIONS] [EXEC ARGS]...\n", env!("CARGO_PKG_NAME"));
+    println!("Arguments:");
+    println!("  [EXEC ARGS]...  Command line arguments for execution\n");
+    println!("Options:");
+    println!("  ~~u, ~~url <URL>    Load the binary file from URL");
+    println!("  ~~p, ~~post         Use the POST method instead of GET");
+    println!("  ~~s, ~~stdin        Load the binary file from stdin");
+    println!("  ~~r, ~~remove       Self remove");
+    println!("  ~~v, ~~version      Print version");
+    println!("  ~~h, ~~help         Print help");
+}
+
+fn try_self_remove(remove: bool) {
+    if remove {
+        let _ = remove_file(env::current_exe().unwrap());
+    }
+}
 
 fn main() {
     let mut args: Args;
@@ -37,24 +104,24 @@ fn main() {
         fn get_env_var(env_var: &str) -> String {
             let mut ret = "".to_string();
             if let Ok(res) = env::var(env_var) { ret = res };
-            return ret;
+            ret
         }
 
         _is_child = get_env_var("ULEXEC_CHILD") == "1";
         if _is_child {
-            args = Args{
-                url: Some("".to_string()),
-                post: false,
-                stdin: true,
-                exec_args: env::args().skip(1).collect(),
-            }
+            args = Args::default();
+            args.stdin = true;
+            args.exec_args = env::args().skip(1).collect();
         } else {
-            args = Args::parse();
+            args = parse_args()
         }
     }
 
     #[cfg(target_os = "linux")]
-    { args = Args::parse() }
+    {
+        args = parse_args();
+        try_self_remove(args.remove);
+    }
 
     let mut exec_file: Vec<u8> = Vec::new();
     let mut file_path = PathBuf::new();
@@ -85,7 +152,7 @@ fn main() {
     } else if !args.exec_args.is_empty() {
         file_path = PathBuf::from(args.exec_args.remove(0));
     } else {
-        eprintln!("Specify the path to the binary file!");
+        eprintln!("Specify the path to the binary file or see '{} ~~help'",  env!("CARGO_PKG_NAME"));
         exit(1)
     }
 
@@ -112,6 +179,8 @@ fn main() {
             exec_stdin.write_all(&exec_file).unwrap();
             drop(exec_file);
 
+            try_self_remove(args.remove);
+
             exit(child.wait().unwrap().code().unwrap())
         } else {
             unsafe { memexec::memexec_exe(&exec_file).unwrap() }
@@ -120,14 +189,15 @@ fn main() {
 
     #[cfg(target_os = "linux")]
     {
+        use std::time;
         use std::ffi::CString;
-        use std::thread::spawn;
         use std::os::fd::AsRawFd;
-        use nix::sys::wait::waitpid;
+        use nix::unistd::{write, close};
+        use std::thread::{spawn, sleep};
         use goblin::elf::{Elf, program_header};
         use memfd_exec::{Stdio, MemFdExecutable};
-        use nix::unistd::{write, close, fork, ForkResult};
         use nix::sys::memfd::{memfd_create, MemFdCreateFlag};
+
 
         fn is_pie(bytes: &Vec<u8>) -> bool {
             let elf = Elf::parse(&bytes).unwrap();
@@ -137,8 +207,9 @@ fn main() {
             .p_vaddr == 0
         }
 
+        let memfd_name = "exec";
         if !is_pie(&exec_file) {
-            exit(MemFdExecutable::new("exec", &exec_file)
+            exit(MemFdExecutable::new(memfd_name, &exec_file)
                 .args(args.exec_args)
                 .stdin(Stdio::inherit())
                 .stdout(Stdio::inherit())
@@ -155,7 +226,7 @@ fn main() {
                 .map(|arg| CString::new(arg.clone()).unwrap()).collect();
 
             let memfd = &memfd_create(
-                CString::new("exec").unwrap().as_c_str(),
+                CString::new(memfd_name).unwrap().as_c_str(),
                 MemFdCreateFlag::MFD_CLOEXEC,
             ).unwrap();
             let memfd_raw = memfd.as_raw_fd();
@@ -164,7 +235,8 @@ fn main() {
                 write(memfd, &exec_file).unwrap();
                 file_path = PathBuf::from(
                     format!("/proc/self/fd/{}", memfd_raw.to_string())
-                )
+                );
+
             }
             drop(exec_file);
 
@@ -173,25 +245,16 @@ fn main() {
             ).unwrap();
             args_cstrs.insert(0, file_cstr);
 
-            match unsafe { fork() } {
-                Ok(ForkResult::Parent { child: pid }) => {
-                    spawn(move || {
-                        waitpid(pid, None)
-                    });
-                    userland_execve::exec(
-                        &file_path,
-                        &args_cstrs,
-                        &envs,
-                    )
-                }
-                Ok(ForkResult::Child) => {
-                    close(memfd_raw).unwrap()
-                }
-                Err(_) => {
-                    eprintln!("Fork error!");
-                    exit(1)
-                }
-            }
+            spawn(move || {
+                sleep(time::Duration::from_millis(1));
+                close(memfd_raw).unwrap()
+            });
+
+            userland_execve::exec(
+                &file_path,
+                &args_cstrs,
+                &envs,
+            )
         }
     }
 }
