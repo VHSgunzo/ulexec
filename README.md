@@ -33,12 +33,15 @@ Arguments:
   [EXEC ARGS]...  Command line arguments for execution
 
 Options:
-  ~~u, ~~url <URL>    Load the binary file from URL
-  ~~p, ~~post         Use the POST method instead of GET
-  ~~s, ~~stdin        Load the binary file from stdin
-  ~~r, ~~remove       Self remove
-  ~~v, ~~version      Print version
-  ~~h, ~~help         Print help
+  ~~u,  ~~url <URL>    Load the binary file from URL (env: ULEXEC_URL)
+  ~~p,  ~~post         Use the POST method instead of GET (env: ULEXEC_POST)
+  ~~f,  ~~file <PATH>  Path to the binary file for exec (env: ULEXEC_FILE)
+  ~~s,  ~~stdin        Load the binary file from stdin (env: ULEXEC_STDIN)
+  ~~r,  ~~remove       Self remove (env: ULEXEC_REMOVE)
+  ~~re, ~~reexec       Reexec fix (env: ULEXEC_REEXEC)
+  ~~m,  ~~mfdexec      Force use memfd exec (env: ULEXEC_MFDEXEC)
+  ~~v,  ~~version      Print version
+  ~~h,  ~~help         Print help
 ```
 
 ## Examples
