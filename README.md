@@ -47,11 +47,13 @@ Options:
 ## Examples
 The tool fully supports static and dynamically compiled Linux executables and Windows PE (portable executable). Simply pass the filename of the binary to `ulexec` and any arguments you want to supply to the binary. The environment will be directly copied over from the environment in which you execute `ulexec`
 
+The file path can be passed directly or with `~~f | ~~file` argument or env var `ULEXEC_FILE`
+
 ```
 ulexec /bin/ls -lha
 ```
 
-You can have it read a binary from `stdin` if you specify `~~s | ~~stdin` argument
+You can read a binary from `stdin` if you specify `~~s | ~~stdin` argument or env var `ULEXEC_STDIN=1`
 
 ```
 cat /bin/ls|ulexec ~~s -lha
@@ -59,16 +61,35 @@ cat /bin/ls|ulexec ~~s -lha
 ulexec ~~s</bin/ls -lha
 ```
 
-To download a binary into memory and immediately execute it you can use `~~u | ~~url`
+To download a binary into memory and immediately execute it you can use `~~u | ~~url` argument or env var `ULEXEC_URL` or pass the URL directly
 
 ```
-ulexec ~~u http://example.com/bin/ls -lha
+ulexec http://example.com/bin/ls -lha
 ```
 
-If the resource (for example https://temp.sh) on which the binary file is located requires using the POST method instead of GET to start downloading, you can specify this with the `~~p | ~~post` argument
+If the resource (for example https://temp.sh) on which the binary file is located requires using the POST method instead of GET to start downloading, you can specify this with the `~~p | ~~post` argument or env var `ULEXEC_POST=1`
 
 ```
-ulexec ~~p ~~u http://temp.sh/ABCDEF/ls -lha
+ulexec ~~p http://temp.sh/ABCDEF/ls -lha
+```
+
+For executable files that need to fork themselves, you can use the `~~re | ~~reexec` argument or env var `ULEXEC_REEXEC=1`
+
+```
+ulexec ~~re http://example.com/bin/tun2proxy --unshare --setup --proxy socks5://127.0.0.1:1080 -- /bin/bash
+ulexec ~~re http://example.com/bin/gocryptfs /tmp/cryptfs /tmp/mnt
+```
+
+To self remove `ulexec` at startup, you can use the `~~r | ~~remove` argument or env var `ULEXEC_REMOVE=1`
+
+```
+ulexec ~~r http://example.com/bin/ls -lha
+```
+
+You can pass `stdin` data to the executed binary
+
+```
+ulexec http://example.com/bin/tar -xzvf-</path/to/local.tar.gz
 ```
 
 ## References

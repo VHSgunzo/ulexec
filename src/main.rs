@@ -49,6 +49,15 @@ fn get_env_var(env_var: &str) -> String {
     ret
 }
 
+fn unset_env_vars_with_prefix(prefix: &str) {
+    let current_vars = env::vars();
+    for (key, _value) in current_vars {
+        if key.starts_with(prefix) {
+            env::remove_var(key);
+        }
+    }
+}
+
 fn parse_args() -> Args {
     let env_args: Vec<String> = env::args().skip(1).collect();
     let mut args = Args::default();
@@ -113,7 +122,16 @@ fn parse_args() -> Args {
     }
     if args.url.is_none() {
         let var = get_env_var("ULEXEC_URL");
-        if !var.is_empty() { args.url = Some(var) }
+        if !var.is_empty() {
+            args.url = Some(var)
+        } else {
+            if !args.exec_args.is_empty() {
+                let arg = &args.exec_args[0];
+                if arg.starts_with("http://") || arg.starts_with("https://") {
+                    args.url = Some(args.exec_args.remove(0));
+                }
+            }
+        }
     }
     if args.file.is_none() {
         let var = get_env_var("ULEXEC_FILE");
@@ -184,6 +202,8 @@ fn main() {
         }
     }
 
+    unset_env_vars_with_prefix("ULEXEC_");
+
     let mut exec_file: Vec<u8> = Vec::new();
     let mut file_path = PathBuf::new();
 
@@ -233,15 +253,7 @@ fn main() {
     if !file_path.to_str().unwrap().is_empty() && exec_file.is_empty() {
         match read(&file_path) {
             Ok(data) => {
-                exec_file = data;
-                #[cfg(target_os = "linux")]
-                if args.reexec && is_child {
-                    file_path = PathBuf::new();
-                    env::remove_var("ULEXEC_URL");
-                    env::remove_var("ULEXEC_FILE");
-                    env::remove_var("ULEXEC_CHILD");
-                    env::remove_var("ULEXEC_REEXEC");
-                }
+                exec_file = data
             }
             Err(err) => {
                 eprintln!("Failed to read the binary file: {err}: {:?}", file_path);
@@ -340,14 +352,14 @@ fn main() {
         }
 
         if args.reexec && !is_child && !args.mfdexec {
-            let fifo_path = &env::temp_dir().join(random_string(8));
-            if let Err(err) = mkfifo(fifo_path, Mode::S_IRWXU) {
+            let fifo_path = env::temp_dir().join(random_string(8));
+            if let Err(err) = mkfifo(&fifo_path, Mode::S_IRWXU) {
                 eprintln!("Failed to create fifo: {err}: {:?}", fifo_path);
                 exit(1)
             }
             env::set_var("ULEXEC_CHILD", "1");
             env::set_var("ULEXEC_REEXEC", "1");
-            env::set_var("ULEXEC_FILE", fifo_path);
+            env::set_var("ULEXEC_FILE", &fifo_path);
             let fifo_path = fifo_path.clone();
             let exec_file = exec_file.clone();
             spawn(move || {
@@ -377,10 +389,10 @@ fn main() {
                 .envs(env::vars())
                 .status().unwrap().code().unwrap())
         } else {
-            if file_path.to_str().unwrap().is_empty() && !exec_file.is_empty() {
+            if !file_path.exists() && !exec_file.is_empty() {
                 match &memfd_create(
                     CString::new(memfd_name).unwrap().as_c_str(),
-                    MemFdCreateFlag::MFD_CLOEXEC,
+                    MemFdCreateFlag::MFD_CLOEXEC
                 ) {
                     Ok(memfd) => {
                         let memfd_raw = memfd.as_raw_fd();
