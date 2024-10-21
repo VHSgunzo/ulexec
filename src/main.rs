@@ -164,6 +164,7 @@ fn main() {
     let mut args: Args;
 
     let is_child = get_env_var("ULEXEC_CHILD") == "1";
+
     #[cfg(target_os = "windows")]
     {
         if is_child {
@@ -235,12 +236,11 @@ fn main() {
                 exec_file = data;
                 #[cfg(target_os = "linux")]
                 if args.reexec && is_child {
-                    let _ = std::fs::remove_file(&file_path);
                     file_path = PathBuf::new();
+                    env::remove_var("ULEXEC_URL");
+                    env::remove_var("ULEXEC_FILE");
                     env::remove_var("ULEXEC_CHILD");
                     env::remove_var("ULEXEC_REEXEC");
-                    env::remove_var("ULEXEC_FILE");
-                    env::remove_var("ULEXEC_URL");
                 }
             }
             Err(err) => {
@@ -277,11 +277,15 @@ fn main() {
     #[cfg(target_os = "linux")]
     {
         use std::time;
+        use std::process;
+        use std::fs::File;
         use std::ffi::CString;
         use std::os::fd::AsRawFd;
-        use nix::unistd::{write, close};
         use std::thread::{spawn, sleep};
+
+        use nix::sys::stat::Mode;
         use goblin::elf::{Elf, program_header};
+        use nix::unistd::{write, close, mkfifo};
         use memfd_exec::{Stdio, MemFdExecutable};
         use nix::sys::memfd::{memfd_create, MemFdCreateFlag};
 
@@ -301,23 +305,55 @@ fn main() {
             }
         }
 
-        if args.reexec && !is_child {
-            let tmp_file = env::temp_dir().join(std::process::id().to_string());
-            match std::fs::File::create(tmp_file.clone()) {
-                Ok(mut file) => {
-                    if let Err(err) = file.write_all(&exec_file) {
-                        eprintln!("Failed to write the binary file: {err}: {:?}", file_path);
+        fn ul_exec(file_path: PathBuf, exec_args: Vec<String>) {
+            let mut args_cstrs: Vec<CString> = exec_args.iter()
+                .map(|arg|
+                    CString::new(arg.clone()).unwrap()
+            ).collect();
+
+            let file_cstr = CString::new(
+                file_path.to_str().unwrap()
+            ).unwrap();
+            args_cstrs.insert(0, file_cstr);
+
+            let envs: Vec<CString> = env::vars()
+                .map(|(key, value)|
+                    CString::new(format!("{}={}", key, value)).unwrap()
+            ).collect();
+
+            userland_execve::exec(
+                &file_path,
+                &args_cstrs,
+                &envs,
+            )
+        }
+
+        if args.reexec && !is_child && !args.mfdexec {
+            let fifo_path = &env::temp_dir().join(process::id().to_string());
+            if let Err(err) = mkfifo(fifo_path, Mode::S_IRWXU) {
+                eprintln!("Failed to create fifo: {err}: {:?}", fifo_path);
+                exit(1)
+            }
+            env::set_var("ULEXEC_CHILD", "1");
+            env::set_var("ULEXEC_REEXEC", "1");
+            env::set_var("ULEXEC_FILE", fifo_path);
+            let fifo_path = fifo_path.clone();
+            let exec_file = exec_file.clone();
+            spawn(move || {
+                match File::create(&fifo_path) {
+                    Ok(mut fifo) => {
+                        if let Err(err) = fifo.write_all(&exec_file) {
+                            eprintln!("Failed to write the binary file to fifo: {err}: {:?}", fifo_path);
+                            exit(1)
+                        }
+                        let _ = std::fs::remove_file(&fifo_path);
+                    }
+                    Err(err) => {
+                        eprintln!("Failed to open fifo: {err}: {:?}", fifo_path);
                         exit(1)
                     }
-                    env::set_var("ULEXEC_CHILD", "1");
-                    env::set_var("ULEXEC_REEXEC", "1");
-                    env::set_var("ULEXEC_FILE", tmp_file.clone());
                 }
-                Err(err) => {
-                    eprintln!("Failed to create the binary file: {err}: {:?}", file_path);
-                    exit(1)
-                }
-            }
+            });
         }
 
         let memfd_name = "exec";
@@ -330,54 +366,39 @@ fn main() {
                 .envs(env::vars())
                 .status().unwrap().code().unwrap())
         } else {
-            let mut args_cstrs: Vec<CString> = args.exec_args.iter()
-                .map(|arg|
-                    CString::new(arg.clone()).unwrap()
-            ).collect();
+            if file_path.to_str().unwrap().is_empty() && !exec_file.is_empty() {
+                match &memfd_create(
+                    CString::new(memfd_name).unwrap().as_c_str(),
+                    MemFdCreateFlag::MFD_CLOEXEC,
+                ) {
+                    Ok(memfd) => {
+                        let memfd_raw = memfd.as_raw_fd();
 
-            match &memfd_create(
-                CString::new(memfd_name).unwrap().as_c_str(),
-                MemFdCreateFlag::MFD_CLOEXEC,
-            ) {
-                Ok(memfd) => {
-                    let memfd_raw = memfd.as_raw_fd();
-
-                    if file_path.to_str().unwrap().is_empty() && !exec_file.is_empty() {
                         file_path = PathBuf::from(
                             format!("/proc/self/fd/{}", memfd_raw.to_string())
                         );
+
                         if let Err(err) = write(memfd, &exec_file) {
                             eprintln!("Failed to write the binary file to memfd: {err}: {:?}", file_path);
                             exit(1)
                         }
+                        drop(exec_file);
+
+                        spawn(move || {
+                            sleep(time::Duration::from_millis(1));
+                            close(memfd_raw).unwrap()
+                        });
+
+                        ul_exec(file_path, args.exec_args)
                     }
-                    drop(exec_file);
-
-                    let file_cstr = CString::new(
-                        file_path.to_str().unwrap()
-                    ).unwrap();
-                    args_cstrs.insert(0, file_cstr);
-
-                    let envs: Vec<CString> = env::vars()
-                        .map(|(key, value)|
-                            CString::new(format!("{}={}", key, value)).unwrap()
-                    ).collect();
-
-                    spawn(move || {
-                        sleep(time::Duration::from_millis(1));
-                        close(memfd_raw).unwrap()
-                    });
-
-                    userland_execve::exec(
-                        &file_path,
-                        &args_cstrs,
-                        &envs,
-                    )
+                    Err(err) => {
+                        eprintln!("Failed to create memfd: {err}");
+                        exit(1)
+                    }
                 }
-                Err(err) => {
-                    eprintln!("Failed to create memfd: {err}");
-                    exit(1)
-                }
+            } else {
+                drop(exec_file);
+                ul_exec(file_path, args.exec_args)
             }
         }
     }

@@ -39,10 +39,10 @@ jobs:
           upx --force -9 --best target/x86_64-pc-windows-gnu/release/ulexec.exe -o target/x86_64-pc-windows-gnu/release/ulexec-upx.exe;
           cp target/x86_64-pc-windows-gnu/release/{ulexec,ulexec-upx}.exe . ;
 
-      - name: Build archlinux package
-        uses: countstarlight/arch-makepkg-action@master
-        with:
-          scripts: "makepkg -fsCc --noconfirm"
+      # - name: Build archlinux package
+      #   uses: countstarlight/arch-makepkg-action@master
+      #   with:
+      #     scripts: "makepkg -fsCc --noconfirm"
 
       - name: Release
         uses: softprops/action-gh-release@v1
