@@ -277,7 +277,6 @@ fn main() {
     #[cfg(target_os = "linux")]
     {
         use std::time;
-        use std::process;
         use std::fs::File;
         use std::ffi::CString;
         use std::os::fd::AsRawFd;
@@ -305,6 +304,18 @@ fn main() {
             }
         }
 
+        fn random_string(length: usize) -> String {
+            const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            let mut rng = time::SystemTime::now().duration_since(time::UNIX_EPOCH).unwrap().as_secs();
+            let mut result = String::with_capacity(length);
+            for _ in 0..length {
+                rng = rng.wrapping_mul(48271).wrapping_rem(0x7FFFFFFF);
+                let idx = (rng % CHARSET.len() as u64) as usize;
+                result.push(CHARSET[idx] as char);
+            }
+            result
+        }
+
         fn ul_exec(file_path: PathBuf, exec_args: Vec<String>) {
             let mut args_cstrs: Vec<CString> = exec_args.iter()
                 .map(|arg|
@@ -329,7 +340,7 @@ fn main() {
         }
 
         if args.reexec && !is_child && !args.mfdexec {
-            let fifo_path = &env::temp_dir().join(process::id().to_string());
+            let fifo_path = &env::temp_dir().join(random_string(8));
             if let Err(err) = mkfifo(fifo_path, Mode::S_IRWXU) {
                 eprintln!("Failed to create fifo: {err}: {:?}", fifo_path);
                 exit(1)
