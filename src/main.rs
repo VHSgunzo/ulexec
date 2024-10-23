@@ -10,6 +10,9 @@ use std::io::{self, Read};
 use reqwest::blocking::{Client, RequestBuilder};
 
 
+const ULEXEC_NAME: &str = env!("CARGO_PKG_NAME");
+
+
 #[derive(Debug)]
 struct Args {
     url: Option<String>,
@@ -22,6 +25,8 @@ struct Args {
     mfdexec: bool,
     #[cfg(target_os = "linux")]
     remove: bool,
+    #[cfg(target_os = "linux")]
+    name: Option<String>,
     exec_args: Vec<String>,
 }
 
@@ -38,6 +43,8 @@ impl Default for Args {
             mfdexec: false,
             #[cfg(target_os = "linux")]
             remove: false,
+            #[cfg(target_os = "linux")]
+            name: None,
             exec_args: Vec::new(),
         }
     }
@@ -68,55 +75,65 @@ fn parse_args() -> Args {
             "~~url" | "~~u" => {
                 if i + 1 < env_args.len() {
                     args.url = Some(env_args[i + 1].to_string());
-                    i += 2;
+                    i += 2
                 } else {
                     eprintln!("A value is required for '~~url <URL>' but none was supplied!");
-                    exit(1);
+                    exit(1)
                 }
             }
             "~~file" | "~~f" => {
                 if i + 1 < env_args.len() {
                     args.file = Some(env_args[i + 1].to_string());
-                    i += 2;
+                    i += 2
                 } else {
                     eprintln!("A value is required for '~~file <PATH>' but none was supplied!");
-                    exit(1);
+                    exit(1)
+                }
+            }
+            #[cfg(target_os = "linux")]
+            "~~name" | "~~n" => {
+                if i + 1 < env_args.len() {
+                    args.name = Some(env_args[i + 1].to_string());
+                    i += 2
+                } else {
+                    eprintln!("A value is required for '~~name <NAME>' but none was supplied!");
+                    exit(1)
                 }
             }
             "~~post" | "~~p" => {
                 args.post = true;
-                i += 1;
+                i += 1
             }
             "~~stdin" | "~~s" => {
                 args.stdin = true;
-                i += 1;
+                i += 1
             }
             #[cfg(target_os = "linux")]
             "~~remove" | "~~r" => {
                 args.remove = true;
-                i += 1;
+                i += 1
             }
             #[cfg(target_os = "linux")]
             "~~reexec" | "~~re" => {
                 args.reexec = true;
-                i += 1;
+                i += 1
             }
             #[cfg(target_os = "linux")]
             "~~mfdexec" | "~~m" => {
                 args.mfdexec = true;
-                i += 1;
+                i += 1
             }
             "~~version" | "~~v" => {
-                println!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
-                exit(0);
+                println!("{ULEXEC_NAME} v{}", env!("CARGO_PKG_VERSION"));
+                exit(0)
             }
             "~~help" | "~~h" => {
                 print_usage();
-                exit(0);
+                exit(0)
             }
             arg => {
                 args.exec_args.push(arg.to_string());
-                i += 1;
+                i += 1
             }
         }
     }
@@ -145,6 +162,14 @@ fn parse_args() -> Args {
     }
     #[cfg(target_os = "linux")]
     {
+        if args.name.is_none() {
+            let var = get_env_var("ULEXEC_NAME");
+            if !var.is_empty() {
+                args.name = Some(var)
+            } else {
+                args.name = Some(ULEXEC_NAME.into())
+            }
+        }
         if !args.remove {
             args.remove = get_env_var("ULEXEC_REMOVE") == "1"
         }
@@ -160,7 +185,7 @@ fn parse_args() -> Args {
 
 fn print_usage() {
     println!("{}\n", env!("CARGO_PKG_DESCRIPTION"));
-    println!("Usage: {} [OPTIONS] [EXEC ARGS]...\n", env!("CARGO_PKG_NAME"));
+    println!("Usage: {ULEXEC_NAME} [OPTIONS] [EXEC ARGS]...\n");
     println!("Arguments:");
     println!("  [EXEC ARGS]...  Command line arguments for execution\n");
     println!("Options:");
@@ -173,6 +198,7 @@ fn print_usage() {
     println!("  ~~r,  ~~remove       Self remove (env: ULEXEC_REMOVE)");
     println!("  ~~re, ~~reexec       Reexec fix (env: ULEXEC_REEXEC)");
     println!("  ~~m,  ~~mfdexec      Force use memfd exec (env: ULEXEC_MFDEXEC)");
+    println!("  ~~n,  ~~name         Set process name or cmdline for memfd exec (env: ULEXEC_NAME)");
     }
     println!("  ~~v,  ~~version      Print version");
     println!("  ~~h,  ~~help         Print help");
@@ -246,7 +272,7 @@ fn main() {
     } else if !args.exec_args.is_empty() {
         file_path = PathBuf::from(args.exec_args.remove(0))
     } else {
-        eprintln!("Specify the path to the binary file or see '{} ~~help'",  env!("CARGO_PKG_NAME"));
+        eprintln!("Specify the path to the binary file or see '{ULEXEC_NAME} ~~help'");
         exit(1)
     }
 
@@ -289,12 +315,14 @@ fn main() {
     #[cfg(target_os = "linux")]
     {
         use std::time;
-        use std::fs::File;
         use std::ffi::CString;
         use std::os::fd::AsRawFd;
         use std::thread::{spawn, sleep};
+        use std::fs::{File, read_to_string};
 
+        use std::os::raw::c_char;
         use nix::sys::stat::Mode;
+        use nix::libc::{prctl, PR_SET_NAME};
         use goblin::elf::{Elf, program_header};
         use nix::unistd::{write, close, mkfifo};
         use memfd_exec::{Stdio, MemFdExecutable};
@@ -379,19 +407,41 @@ fn main() {
             });
         }
 
-        let memfd_name = "exec";
+        let exec_name = args.name.unwrap();
+
         if args.mfdexec || !is_pie(&exec_file) {
-            exit(MemFdExecutable::new(memfd_name, &exec_file)
+            drop(file_path);
+
+            let noexec_path = PathBuf::from("/proc/sys/vm/memfd_noexec");
+            match read_to_string(&noexec_path) {
+                Ok(data) => {
+                    if !data.contains("0") {
+                        eprint!("You need to enable memfd_noexec == 0: {:?} == {data}", &noexec_path);
+                        exit(1)
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Failed to read memfd_noexec: {err}: {:?}", &noexec_path);
+                    exit(1)
+                }
+            }
+            drop(noexec_path);
+
+            MemFdExecutable::new(exec_name, &exec_file)
                 .args(args.exec_args)
-                .stdin(Stdio::inherit())
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
                 .envs(env::vars())
-                .status().unwrap().code().unwrap())
+                .exec(Stdio::inherit());
         } else {
+            if exec_name != ULEXEC_NAME {
+                let exec_name_cstr = CString::new(exec_name.clone()).unwrap();
+                unsafe {
+                    prctl(PR_SET_NAME, exec_name_cstr.as_ptr() as *mut c_char, 0, 0, 0);
+                }
+            }
+
             if !file_path.exists() && !exec_file.is_empty() {
                 match &memfd_create(
-                    CString::new(memfd_name).unwrap().as_c_str(),
+                    CString::new(exec_name).unwrap().as_c_str(),
                     MemFdCreateFlag::MFD_CLOEXEC
                 ) {
                     Ok(memfd) => {

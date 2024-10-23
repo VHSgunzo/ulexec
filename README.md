@@ -40,6 +40,7 @@ Options:
   ~~r,  ~~remove       Self remove (env: ULEXEC_REMOVE)
   ~~re, ~~reexec       Reexec fix (env: ULEXEC_REEXEC)
   ~~m,  ~~mfdexec      Force use memfd exec (env: ULEXEC_MFDEXEC)
+  ~~n,  ~~name         Set process name or cmdline for memfd exec (env: ULEXEC_NAME)
   ~~v,  ~~version      Print version
   ~~h,  ~~help         Print help
 ```
