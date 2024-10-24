@@ -413,16 +413,18 @@ fn main() {
             drop(file_path);
 
             let noexec_path = PathBuf::from("/proc/sys/vm/memfd_noexec");
-            match read_to_string(&noexec_path) {
-                Ok(data) => {
-                    if !data.contains("0") {
-                        eprint!("You need to enable memfd_noexec == 0: {:?} == {data}", &noexec_path);
+            if noexec_path.exists() {
+                match read_to_string(&noexec_path) {
+                    Ok(data) => {
+                        if !data.contains("0") {
+                            eprint!("You need to enable memfd_noexec == 0: {:?} == {data}", &noexec_path);
+                            exit(1)
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("Failed to read memfd_noexec: {err}: {:?}", &noexec_path);
                         exit(1)
                     }
-                }
-                Err(err) => {
-                    eprintln!("Failed to read memfd_noexec: {err}: {:?}", &noexec_path);
-                    exit(1)
                 }
             }
             drop(noexec_path);
