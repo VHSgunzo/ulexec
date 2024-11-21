@@ -30,8 +30,8 @@ struct Args {
     exec_args: Vec<String>,
 }
 
-impl Default for Args {
-    fn default() -> Self {
+impl Args {
+    fn new() -> Self {
         Args {
             url: None,
             file: None,
@@ -50,15 +50,12 @@ impl Default for Args {
     }
 }
 
-fn get_env_var(env_var: &str) -> String {
-    let mut ret = "".to_string();
-    if let Ok(res) = env::var(env_var) { ret = res };
-    ret
+fn get_env_var(var: &str) -> String {
+    env::var(var).unwrap_or("".into())
 }
 
 fn unset_env_vars_with_prefix(prefix: &str) {
-    let current_vars = env::vars();
-    for (key, _value) in current_vars {
+    for (key, _) in env::vars() {
         if key.starts_with(prefix) {
             env::remove_var(key);
         }
@@ -67,7 +64,7 @@ fn unset_env_vars_with_prefix(prefix: &str) {
 
 fn parse_args() -> Args {
     let env_args: Vec<String> = env::args().skip(1).collect();
-    let mut args = Args::default();
+    let mut args = Args::new();
 
     let mut i = 0;
     while i < env_args.len() {
@@ -141,12 +138,10 @@ fn parse_args() -> Args {
         let var = get_env_var("ULEXEC_URL");
         if !var.is_empty() {
             args.url = Some(var)
-        } else {
-            if !args.exec_args.is_empty() {
-                let arg = &args.exec_args[0];
-                if arg.starts_with("http://") || arg.starts_with("https://") {
-                    args.url = Some(args.exec_args.remove(0));
-                }
+        } else if !args.exec_args.is_empty() {
+            let arg = &args.exec_args[0];
+            if arg.starts_with("http://") || arg.starts_with("https://") {
+                args.url = Some(args.exec_args.remove(0));
             }
         }
     }
@@ -212,7 +207,7 @@ fn main() {
     #[cfg(target_os = "windows")]
     {
         if is_child {
-            args = Args::default();
+            args = Args::new();
             args.stdin = true;
             args.exec_args = env::args().skip(1).collect();
         } else {
@@ -252,13 +247,12 @@ fn main() {
             .build()
             .unwrap();
 
-        let req: RequestBuilder;
         let url = args.url.as_ref().unwrap();
-        if args.post {
-            req = client.post(url)
+        let req: RequestBuilder = if args.post {
+            client.post(url)
         } else {
-            req = client.get(url)
-        }
+            client.get(url)
+        };
         match req.send() {
             Ok(data) => {
                 exec_file = data.bytes().unwrap().to_vec()
@@ -329,8 +323,8 @@ fn main() {
         use nix::sys::memfd::{memfd_create, MemFdCreateFlag};
 
 
-        fn is_pie(bytes: &Vec<u8>) -> bool {
-            match Elf::parse(&bytes) {
+        fn is_pie(bytes: &[u8]) -> bool {
+            match Elf::parse(bytes) {
                 Ok(elf) => {
                     elf.program_headers.iter()
                     .find(|h| h.p_type == program_header::PT_LOAD)
@@ -450,7 +444,7 @@ fn main() {
                         let memfd_raw = memfd.as_raw_fd();
 
                         file_path = PathBuf::from(
-                            format!("/proc/self/fd/{}", memfd_raw.to_string())
+                            format!("/proc/self/fd/{memfd_raw}")
                         );
 
                         if let Err(err) = write(memfd, &exec_file) {

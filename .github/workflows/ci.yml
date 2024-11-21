@@ -25,19 +25,39 @@ jobs:
           override: true
           target: x86_64-unknown-linux-musl
 
-      - name: Build
-        run: >
-          sudo bash -c 'apt update && apt install upx binutils gcc-mingw-w64 musl-tools -y';
-          rustup component add rust-src --toolchain nightly;
-          cargo build --release;
-          strip -s -R .comment -R .gnu.version --strip-unneeded target/x86_64-unknown-linux-musl/release/ulexec;
-          upx --force -9 --best target/x86_64-unknown-linux-musl/release/ulexec -o target/x86_64-unknown-linux-musl/release/ulexec-upx;
-          cp target/x86_64-unknown-linux-musl/release/{ulexec,ulexec-upx} . ;
-          echo Windows;
-          rustup target add x86_64-pc-windows-gnu;
-          cargo build --release --target x86_64-pc-windows-gnu;
-          upx --force -9 --best target/x86_64-pc-windows-gnu/release/ulexec.exe -o target/x86_64-pc-windows-gnu/release/ulexec-upx.exe;
-          cp target/x86_64-pc-windows-gnu/release/{ulexec,ulexec-upx}.exe . ;
+      - name: Install deps
+        run: |
+          sudo bash -c 'apt update && apt install upx binutils gcc-mingw-w64 musl-tools -y'
+          rustup component add rust-src --toolchain nightly
+          cargo install cross
+
+      - name: Build x86_64
+        run: |
+          cargo clean
+          cargo build --release
+          mv target/x86_64-unknown-linux-musl/release/ulexec ulexec-x86_64
+
+      - name: Build aarch64
+        run: |
+          cargo clean
+          cross build --release --target aarch64-unknown-linux-musl
+          mv target/aarch64-unknown-linux-musl/release/ulexec ulexec-aarch64
+
+      # https://github.com/aunali1/super-strip
+      - name: Strip
+        run: |
+          "${{ github.workspace }}/.github/sstrip" ulexec-*
+
+      - name: UPX
+        run: |
+          ls ulexec-*|xargs -I {} upx -9 --best {} -o {}-upx
+
+      - name: Build x86_64 windows
+        run: |
+          cargo clean
+          cargo build --release --target x86_64-pc-windows-gnu
+          mv target/x86_64-pc-windows-gnu/release/ulexec.exe ulexec-x86_64.exe
+          upx --force -9 --best ulexec-x86_64.exe -o ulexec-x86_64-upx.exe
 
       # - name: Build archlinux package
       #   uses: countstarlight/arch-makepkg-action@master

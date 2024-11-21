@@ -13,9 +13,9 @@ rustup component add rust-src --toolchain nightly
 ```
 * **Compile the Linux binary (musl required)**
 ```
-rustup target add x86_64-unknown-linux-musl
+rustup target add $(uname -m)-unknown-linux-musl
 cargo build --release
-./target/x86_64-unknown-linux-musl/release/ulexec ~~help
+./target/$(uname -m)-unknown-linux-musl/release/ulexec ~~help
 ```
 * **Compile the Windows binary (mingw-w64-gcc required)**
 ```
