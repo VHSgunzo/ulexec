@@ -27,7 +27,7 @@ jobs:
 
       - name: Install deps
         run: |
-          sudo bash -c 'apt update && apt install upx binutils gcc-mingw-w64 musl-tools -y'
+          sudo bash -c 'apt update && apt install upx binutils musl-tools -y'
           rustup component add rust-src --toolchain nightly
           cargo install cross
 
@@ -55,7 +55,7 @@ jobs:
       - name: Build x86_64 windows
         run: |
           cargo clean
-          cargo build --release --target x86_64-pc-windows-gnu
+          cross build --release --target x86_64-pc-windows-gnu
           mv target/x86_64-pc-windows-gnu/release/ulexec.exe ulexec-x86_64.exe
           upx --force -9 --best ulexec-x86_64.exe -o ulexec-x86_64-upx.exe
 
