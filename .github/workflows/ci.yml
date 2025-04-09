@@ -43,10 +43,9 @@ jobs:
           cross build --release --target aarch64-unknown-linux-musl
           mv target/aarch64-unknown-linux-musl/release/ulexec ulexec-aarch64
 
-      # https://github.com/aunali1/super-strip
       - name: Strip
         run: |
-          "${{ github.workspace }}/.github/sstrip" ulexec-*
+          strip --target=elf64-little --strip-section-headers ulexec-*
 
       - name: UPX
         run: |
